@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>MVVM框架</title>
+</head>
+<body>
+    <div id="app">
+        <h1>{{name}} 's age is {{age}}</h1>
+    </div>
+</body>
+
+<script>
+    let id = 0 
+    let currentObserver= null
+    class Subject{
+        constructor(){
+            this.id=id++
+            this.observers=[]
+        }
+        addObserver(observer){
+            this.observers.push(observer)
+        }
+        removeObserver(observer){
+            var index=this.observers.indexOf(observer)
+            if(index>-1){
+                this.observers.splice(index,1)
+            }
+        }
+        notify(){          
+            console.log(this.observers)
+            this.observers.forEach(observer=>{               
+                observer.update()
+            })
+        }
+    }
+
+
+    function observe(data){       
+        if(!data||typeof data!=='object') return
+        for(var key in data){
+            let val=data[key]
+            let subject = new Subject()
+            Object.defineProperty(data,key,{
+                enumerable:true,
+                configurable:true,
+                get:function(){
+                    console.log(`get ${key}: ${val}`)
+                    if(currentObserver){                     
+                        console.log('has currentObserver')
+                        currentObserver.subscribeTo(subject)
+                    }
+                    return val
+                },
+                set:function(newVal){
+                    val=newVal
+                    console.log('start notify ...')
+                    subject.notify()
+                    console.log('over notify ...')
+                }
+            })
+            if (typeof val=== 'object'){
+                observe(val)
+            }
+        }
+    }
+
+    
+
+
+
+    class mvvm{
+        constructor(opts){
+            this.init(opts)
+            observe(this.$data)
+            this.compile()
+        }
+        init(opts){
+        this.$el=document.querySelector(opts.el)
+        this.$data=opts.data
+        this.observers=[]
+        }
+        compile(){
+            this.traverse(this.$el)
+
+        }
+
+        traverse(node){
+            console.log(node.nodeype)
+            if(node.nodeType === 1){
+                node.childNodes.forEach(childNode=>{
+                    this.traverse(childNode)
+             })
+            }else if(node.nodeType ===3){
+                this.renderText(node)
+            }
+        }
+        renderText(node){
+            console.log(node)
+            let reg = /{{(.+?)}}/g
+            let match
+            while (match=reg.exec(node.nodeValue)){
+                let raw = match[0]
+                let key = match[1].trim()
+                node.nodeValue=node.nodeValue.replace(raw,this.$data[key])
+                new Observer(this,key,function(val,oldVal){
+                    node.nodeValue=node.nodeValue.replace(oldVal,val)
+                })
+            }
+        }
+        notify(){
+            this.observers.forEach(observer=>{
+                observer.update()
+            })
+        }
+    }
+
+    class Observer{
+        constructor(vm,key,cb){
+            this.subjects={}
+            this.vm=vm
+            this.key=key
+            this.cb=cb
+            this.value=this.getVaule()
+        }
+        update(){
+            let oldVal=this.value
+            let value=this.getVaule()
+            if(value!==oldVal){
+                this.value=value
+                this.cb.bind(this.vm)(value,oldVal)
+            }
+        }
+        subscribeTo(subject){
+            if(!this.subjects[subject.id]){
+                console.log('subscribeTo..',subject)
+                console.log(this)
+                subject.addObserver(this)
+                this.subjects[subject.id]=subject
+            }
+        }
+        getVaule(){
+             currentObserver = this
+             let value = this.vm.$data[this.key]
+             currentObserver= null
+             return value
+        }
+
+    }
+    
+
+    
+    let vm=new mvvm({
+        el:'#app',
+        data:{
+            name:'jirengu',
+            age:3
+        }
+    })
+    //setInterval(function(){
+     //   vm.$data.age++
+    //},1000)
+</script>
+</html>
