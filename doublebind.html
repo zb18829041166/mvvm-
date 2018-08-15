@@ -10,7 +10,7 @@
 
 <body>
     <div id="app">
-        <input v-model="name" type="text">
+        <input v-model="name"   v-on:click="sayHi" type="text">
         <h1>{{name}} 's age is {{age}}</h1>
     </div>
 </body>
@@ -51,24 +51,40 @@
         }
 
 
+        //处理指令
         compileNode(node) {
-            let attrs = [...node.attributes]
+            let attrs = [...node.attributes] //类数组对象转换成数组，也可用其他方法
             attrs.forEach(attr => {
-                if (this.isDirective(attr.name)) {
-                    let key = attr.value
-                    node.value = this.vm.$data[key]
-                    new Observer(this.vm, key, function (newVal) {
-                        node.value = newVal
-                    })
-                    node.oninput = (e) => {
-                        this.vm.$data[key] = e.target.value
-                    }
+                //attr 是个对象，attr.name 是属性的名字如 v-model， attr.value 是对应的值，如 name
+                if (this.isModelDirective(attr.name)) {
+                    this.bindModel(node, attr)
+                } else if (this.isEventDirective(attr.name)) {
+                    this.bindEventHander(node, attr)
                 }
             })
         }
+        bindModel(node, attr) {
+            let key = attr.value       //attr.value === 'name'
+            node.value = this.vm[key]
+            new Observer(this.vm, key, function (newVal) {
+                node.value = newVal
+            })
+            node.oninput = (e) => {
+                this.vm[key] = e.target.value  //因为是箭头函数，所以这里的 this 是 compile 对象
+            }
+        }
+        bindEventHander(node, attr) {       //attr.name === 'v-on:click', attr.value === 'sayHi'
+            let eventType = attr.name.substr(5)       // click
+            let methodName = attr.value
+            node.addEventListener(eventType, this.vm.$methods[methodName])
+        }
         //判断属性名是否是指令
-        isDirective(attrName) {
+        isModelDirective(attrName) {
             return attrName === 'v-model'
+        }
+
+        isEventDirective(attrName) {
+            return attrName.indexOf('v-on') === 0
         }
 
     }
@@ -139,9 +155,31 @@
         }
         init(opts) {
             this.$el = document.querySelector(opts.el)
-            this.$data = opts.data
-            this.observers = []
+            this.$data = opts.data || {}
+            this.$methods = opts.methods || {}
+            //把$data 中的数据直接代理到当前 vm 对象
+            for (let key in this.$data) {
+                Object.defineProperty(this, key, {
+                    enumerable: true,
+                    configurable: true,
+                    get: () => {  //这里用了箭头函数，所有里面的 this 就指代外面的 this 也就是 vm
+                        return this.$data[key]
+                    },
+                    set: newVal => {
+                        this.$data[key] = newVal
+                    }
+                })
+            }
+
+            //让 this.$methods 里面的函数中的 this，都指向当前的 this，也就是 vm
+            for (let key in this.$methods) {
+                this.$methods[key] = this.$methods[key].bind(this)
+            }
         }
+
+
+
+
     }
 
     class Observer {
@@ -163,7 +201,6 @@
         subscribeTo(subject) {
             if (!this.subjects[subject.id]) {
                 console.log('subscribeTo..', subject)
-                console.log(this)
                 subject.addObserver(this)
                 this.subjects[subject.id] = subject
             }
@@ -184,6 +221,11 @@
         data: {
             name: 'jirengu',
             age: 3
+        },
+        methods: {
+            sayHi() {
+                alert(`hi ${this.name}`)
+            }
         }
     })
 
